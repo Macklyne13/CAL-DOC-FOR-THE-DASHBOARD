@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACMS Performance Dashboard</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load D3.js for charting -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <!-- Use Inter font family -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        input[type="number"]::-webkit-inner-spin-button, 
+        input[type="number"]::-webkit-outer-spin-button { 
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type="number"] {
+            -moz-appearance: textfield;
+        }
+        .ranking-table th, .ranking-table td {
+            padding: 8px 12px;
+            text-align: left;
+        }
+        .rank-vol {
+            font-weight: 700;
+            color: #4338ca;
+        }
+        .rank-val {
+            font-weight: 700;
+            color: #059669;
+        }
+        .chart-container {
+            width: 100%;
+            height: 350px; /* Fixed height for consistent visualization */
+            min-width: 300px;
+        }
+        /* D3 styles for bars */
+        .bar-vol { fill: #4f46e5; } /* Indigo-600 */
+        .bar-val { fill: #10b981; } /* Emerald-500 */
+        .axis text { fill: #6b7280; font-size: 10px; }
+        .axis path, .axis line { stroke: #d1d5db; }
+
+        /* Custom Tooltip Style */
+        #tooltip {
+            position: absolute;
+            background: rgba(17, 24, 39, 0.95); /* Gray-900 with slight transparency */
+            color: #f3f4f6;
+            padding: 8px 12px;
+            border-radius: 8px;
+            pointer-events: none; /* Important: prevents the tooltip from blocking mouse events on the bar */
+            font-size: 12px;
+            line-height: 1.4;
+            opacity: 0;
+            transition: opacity 0.2s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+        }
+        #tooltip .metric-label {
+            font-weight: 600;
+            color: #a5b4fc; /* Indigo-300 */
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <!-- Tooltip Placeholder -->
+    <div id="tooltip"></div>
+
+    <div class="max-w-7xl mx-auto">
+        <!-- Dashboard Header -->
+        <header class="mb-6">
+            <h1 class="text-3xl font-extrabold text-gray-800">ACMS Performance Overview</h1>
+            <p class="text-gray-500">Real-time metrics for Account Collections Managers (ACMS).</p>
+        </header>
+
+        <!-- Control Panel (Filters and Search) -->
+        <div class="bg-white p-4 rounded-xl shadow-lg mb-6 flex flex-wrap gap-4">
+            
+            <!-- ACMS Name Search -->
+            <div class="flex-grow min-w-[200px] sm:w-auto">
+                <label for="acmSearch" class="block text-sm font-medium text-gray-700 mb-1">Search Name</label>
+                <input type="text" id="acmSearch" placeholder="Search ACM Name..."
+                       class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150">
+            </div>
+
+            <!-- Shift Filter -->
+            <div class="w-full sm:w-[calc(50%-8px)] md:w-auto md:flex-1 min-w-[120px]">
+                <label for="shiftFilter" class="block text-sm font-medium text-gray-700 mb-1">Shift</label>
+                <select id="shiftFilter" class="w-full p-2 border border-gray-300 rounded-lg bg-white appearance-none pr-8">
+                    <option value="All">All Shifts</option>
+                </select>
+            </div>
+
+            <!-- Status Filter -->
+            <div class="w-full sm:w-[calc(50%-8px)] md:w-auto md:flex-1 min-w-[120px]">
+                <label for="statusFilter" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select id="statusFilter" class="w-full p-2 border border-gray-300 rounded-lg bg-white appearance-none pr-8">
+                    <option value="All">All Statuses</option>
+                </select>
+            </div>
+            
+            <!-- Team Filter -->
+            <div class="w-full sm:w-[calc(50%-8px)] md:w-auto md:flex-1 min-w-[120px]">
+                <label for="teamFilter" class="block text-sm font-medium text-gray-700 mb-1">Team</label>
+                <select id="teamFilter" class="w-full p-2 border border-gray-300 rounded-lg bg-white appearance-none pr-8">
+                    <option value="All">All Teams</option>
+                </select>
+            </div>
+
+            <!-- Branch Filter -->
+            <div class="w-full sm:w-[calc(50%-8px)] md:w-auto md:flex-1 min-w-[120px]">
+                <label for="branchFilter" class="block text-sm font-medium text-gray-700 mb-1">Branch</label>
+                <select id="branchFilter" class="w-full p-2 border border-gray-300 rounded-lg bg-white appearance-none pr-8">
+                    <option value="All">All Branches</option>
+                </select>
+            </div>
+
+            <!-- PTP Volume Range Filter -->
+            <div class="w-full md:w-[calc(50%-8px)] xl:w-[calc(25%-8px)] min-w-[180px]">
+                <label class="block text-sm font-medium text-gray-700 mb-1">PTP Vol (Min/Max)</label>
+                <div class="flex gap-2">
+                    <input type="number" id="ptpVolumeMin" placeholder="Min Vol" title="Minimum PTP Volume"
+                           class="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                    <input type="number" id="ptpVolumeMax" placeholder="Max Vol" title="Maximum PTP Volume"
+                           class="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                </div>
+            </div>
+
+            <!-- PTP Value Range Filter -->
+            <div class="w-full md:w-[calc(50%-8px)] xl:w-[calc(25%-8px)] min-w-[180px]">
+                <label class="block text-sm font-medium text-gray-700 mb-1">PTP Val (Min/Max)</label>
+                <div class="flex gap-2">
+                    <input type="number" id="ptpValueMin" placeholder="Min Val" title="Minimum PTP Value"
+                           class="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                    <input type="number" id="ptpValueMax" placeholder="Max Val" title="Maximum PTP Value"
+                           class="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                </div>
+            </div>
+
+            <!-- File Upload Section -->
+            <div class="w-full xl:w-[calc(50%-8px)] min-w-[300px] border-t md:border-t-0 md:border-l pt-4 md:pt-0 md:pl-4 border-gray-200">
+                <label for="fileInput" class="block text-sm font-medium text-gray-700 mb-1">Upload Data (.csv or .json)</label>
+                <input type="file" id="fileInput" accept=".csv,.json"
+                       class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
+                <p id="uploadStatus" class="text-xs mt-1 text-gray-500">Using mock data. Upload a file to begin analysis.</p>
+            </div>
+            
+        </div>
+        
+        <!-- ============================================== -->
+        <!-- Performance Summary and Rankings (TABLE VIEW) -->
+        <!-- ============================================== -->
+        <div class="mb-8 p-6 bg-white rounded-xl shadow-lg">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6 border-b pb-2">Performance Rankings (Filtered Data)</h2>
+            
+            <!-- ACM Rankings (Top 5 and Least 5) -->
+            <section class="mb-8">
+                <h3 class="text-xl font-semibold text-indigo-700 mb-4">Individual ACMS Rankings</h3>
+                <p class="text-sm text-gray-500 italic mb-2">Hover over bars in the charts below to see the ACM's Team and Branch.</p>
+                <div id="acmRankingsContent" class="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                    <!-- Charts and Tables inserted by JS -->
+                </div>
+            </section>
+
+            <!-- Team Rankings (Top 5 and Least 5) -->
+            <section class="mb-8">
+                <h3 class="text-xl font-semibold text-green-700 mb-4">Team Rankings</h3>
+                <div id="teamRankingsContent" class="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                    <!-- Charts and Tables inserted by JS -->
+                </div>
+            </section>
+
+            <!-- Branch Rankings (Top 5 and Least 5) -->
+            <section class="mb-8">
+                <h3 class="text-xl font-semibold text-yellow-700 mb-4">Branch Rankings</h3>
+                <div id="branchRankingsContent" class="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                    <!-- Charts and Tables inserted by JS -->
+                </div>
+            </section>
+            
+            <!-- Segmented Rankings (Shift & Status Breakdown) -->
+            <section>
+                <h3 class="text-xl font-semibold text-purple-700 mb-4 border-t pt-4">Segmented Breakdowns (Top/Least ACMS within Groups)</h3>
+                
+                <!-- Shift Breakdown -->
+                <div class="mb-8 bg-gray-50 p-4 rounded-lg shadow-inner" id="shiftRankingsContent">
+                     <h4 class="text-lg font-bold text-gray-800 mb-3">Shift Breakdown</h4>
+                     <!-- Tables and Charts inserted by JS -->
+                </div>
+
+                <!-- Status Breakdown -->
+                <div class="bg-gray-50 p-4 rounded-lg shadow-inner" id="statusRankingsContent">
+                     <h4 class="text-lg font-bold text-gray-800 mb-3">Status Breakdown</h4>
+                     <!-- Tables and Charts inserted by JS -->
+                </div>
+            </section>
+
+        </div>
+        <!-- ============================================== -->
+        
+        <!-- Dashboard Content (Detailed Table) -->
+        <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ACMS Name</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Calls</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PTP (Volume)</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PTP (Value)</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Shift</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Team</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Branch</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dashboardTableBody" class="bg-white divide-y divide-gray-200">
+                        <!-- Data rows will be inserted here by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div id="noResults" class="hidden text-center py-8 text-lg text-gray-500 bg-gray-50 border-t">
+                No ACMS found matching the current filters.
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        let acmData = []; // Global variable to hold the dashboard data
+        const TOP_N = 5; // Use Top 5 for charts and tables
+        let globalChartIndex = 0; // NEW: Counter for sequential chart rendering
+        
+        // Mock data now includes more variety for better ranking demonstrations
+        const mockData = [
+            { id: 1, name: "Alice Johnson", calls: 125, ptpVolume: 60, ptpValue: 22500, shift: "Day", status: "Fintech", team: "Alpha", branch: "HQ Central" },
+            { id: 2, name: "Bob Williams", calls: 98, ptpVolume: 42, ptpValue: 15500, shift: "Virtual", status: "Hybrid", team: "Beta", branch: "Remote" },
+            { id: 3, name: "Charlie Brown", calls: 150, ptpVolume: 75, ptpValue: 35000, shift: "Day", status: "Conventional", team: "Gamma", branch: "Branch 001" },
+            { id: 4, name: "Diana Prince", calls: 110, ptpVolume: 48, ptpValue: 19000, shift: "Virtual Day", status: "Fintech", team: "Alpha", branch: "Branch 002" },
+            { id: 5, name: "Ethan Hunt", calls: 85, ptpVolume: 30, ptpValue: 8900, shift: "Virtual (8am-5pm)", status: "Hybrid", team: "Delta", branch: "Remote" },
+            { id: 6, name: "Fiona Glenn", calls: 133, ptpVolume: 55, ptpValue: 20500, shift: "Day", status: "Fintech", team: "Alpha", branch: "HQ Central" },
+            { id: 7, name: "George King", calls: 105, ptpVolume: 40, ptpValue: 14750, shift: "Virtual", status: "Conventional", team: "Beta", branch: "Branch 003" },
+            { id: 8, name: "Hannah Lee", calls: 140, ptpVolume: 65, ptpValue: 28000, shift: "Virtual Day", status: "Hybrid", team: "Gamma", branch: "Remote" },
+            { id: 9, name: "Ivan Rodriguez", calls: 70, ptpVolume: 25, ptpValue: 6500, shift: "Virtual (8am-5pm)", status: "Conventional", team: "Delta", branch: "Branch 001" },
+            { id: 10, name: "Kelly Chen", calls: 115, ptpVolume: 52, ptpValue: 21000, shift: "Day", status: "Fintech", team: "Alpha", branch: "Branch 002" },
+            { id: 11, name: "Laura Miller", calls: 90, ptpVolume: 38, ptpValue: 12000, shift: "Day", status: "Hybrid", team: "Beta", branch: "HQ Central" },
+            { id: 12, name: "Mike Davis", calls: 160, ptpVolume: 80, ptpValue: 40000, shift: "Virtual Day", status: "Conventional", team: "Gamma", branch: "Remote" },
+            { id: 13, name: "Nina Brown", calls: 75, ptpVolume: 20, ptpValue: 5000, shift: "Virtual (8am-5pm)", status: "Fintech", team: "Delta", branch: "Branch 003" },
+            { id: 14, name: "Oscar Perez", calls: 118, ptpVolume: 45, ptpValue: 18500, shift: "Day", status: "Hybrid", team: "Alpha", branch: "Branch 001" },
+            { id: 15, name: "Penny Lane", calls: 100, ptpVolume: 35, ptpValue: 10000, shift: "Virtual", status: "Conventional", team: "Beta", branch: "Branch 002" },
+            { id: 16, name: "Quentin Troy", calls: 102, ptpVolume: 58, ptpValue: 24000, shift: "Day", status: "Fintech", team: "Gamma", branch: "HQ Central" },
+            { id: 17, name: "Rachel Green", calls: 130, ptpVolume: 62, ptpValue: 26500, shift: "Virtual Day", status: "Hybrid", team: "Delta", branch: "Remote" },
+        ];
+
+        // --- Helper Functions for UI Styling and Formatting ---
+
+        const getStatusColor = (status) => {
+            switch (status) {
+                case 'Fintech': return 'bg-blue-100 text-blue-800';
+                case 'Hybrid': return 'bg-yellow-100 text-yellow-800';
+                case 'Conventional': return 'bg-green-100 text-green-800';
+                default: return 'bg-gray-100 text-gray-800';
+            }
+        };
+
+        const getShiftColor = (shift) => {
+            switch (shift) {
+                case 'Day': return 'bg-indigo-100 text-indigo-800';
+                case 'Virtual': return 'bg-purple-100 text-purple-800';
+                case 'Virtual Day': return 'bg-pink-100 text-pink-800';
+                case 'Virtual (8am-5pm)': return 'bg-red-100 text-red-800';
+                default: return 'bg-gray-100 text-gray-800';
+            }
+        };
+
+        // Formats a number for PTP Volume (integer)
+        const formatVolume = (num) => (num || 0).toLocaleString();
+        
+        // Formats a number for PTP Value (currency)
+        const formatValue = (num) => new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 0
+        }).format(num || 0);
+
+        // --- Data Parsing and Normalization ---
+        
+        const HEADER_MAP = {
+            'name': ['acmname', 'name', 'acmsname', 'employee'],
+            'calls': ['calls', 'callvolume'],
+            'ptpVolume': ['ptpvolume', 'ptpvol', 'volume'],
+            'ptpValue': ['ptpvalue', 'ptpval', 'value'],
+            'shift': ['shift', 'workinghours'],
+            'status': ['status', 'acmstatus'],
+            'team': ['team', 'teamname'],
+            'branch': ['branch', 'location']
+        };
+
+        const parseCSV = (csvText) => {
+            const lines = csvText.trim().replace(/\r/g, '').split('\n').filter(line => line.trim() !== '');
+            if (lines.length < 2) return { data: [], headers: [] };
+
+            const csvSplitter = (text) => {
+                const regex = /,(?=(?:(?:[^"]*"){2})*[^"]*$)/;
+                return text.split(regex).map(field => field.replace(/^"|"$/g, '').trim());
+            };
+
+            const rawHeaders = csvSplitter(lines[0]);
+            
+            const standardizedHeaders = rawHeaders.map(rawH => {
+                const sanitizedH = rawH.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+                
+                for (const standardKey in HEADER_MAP) {
+                    if (HEADER_MAP[standardKey].includes(sanitizedH)) {
+                        return standardKey;
+                    }
+                }
+                return sanitizedH;
+            });
+            
+            const data = [];
+
+            for (let i = 1; i < lines.length; i++) {
+                const values = csvSplitter(lines[i]); 
+                
+                if (values.length !== standardizedHeaders.length) {
+                    console.error(`Skipping row ${i}: column count mismatch. Expected ${standardizedHeaders.length}, got ${values.length}. Row content: ${lines[i].substring(0, 100)}...`);
+                    continue;
+                }
+                
+                const row = {};
+                standardizedHeaders.forEach((key, index) => {
+                    let value = values[index];
+                    
+                    if (['calls', 'ptpVolume', 'ptpValue'].includes(key)) {
+                        value = value.toString().replace(/[^0-9.]/g, ''); 
+                        row[key] = parseFloat(value) || 0;
+                    } else {
+                        row[key] = value.toString().trim();
+                    }
+                });
+                data.push(row);
+            }
+            
+            return { data, headers: standardizedHeaders };
+        };
+
+        const normalizeData = (data) => {
+            return data.map((item, index) => {
+                const newItem = { ...item };
+                
+                newItem.id = item.id || index + 1; 
+
+                newItem.calls = parseFloat(newItem.calls || 0);
+                newItem.ptpVolume = parseFloat(newItem.ptpVolume || 0);
+                newItem.ptpValue = parseFloat(newItem.ptpValue || 0);
+                
+                newItem.name = newItem.name || item.acmname || 'Unknown ACM';
+                newItem.shift = newItem.shift || 'Unknown Shift';
+                newItem.status = newItem.status || 'Unknown Status';
+                newItem.team = newItem.team || 'Unknown Team';
+                newItem.branch = newItem.branch || 'Unknown Branch';
+                return newItem;
+            });
+        }
+
+        const loadData = (data, source, headers) => {
+            acmData = normalizeData(data);
+
+            // Reset filters to default state
+            document.getElementById('acmSearch').value = '';
+            document.getElementById('ptpVolumeMin').value = '';
+            document.getElementById('ptpVolumeMax').value = '';
+            document.getElementById('ptpValueMin').value = '';
+            document.getElementById('ptpValueMax').value = '';
+
+            setupFilters(acmData);
+            applyFilters();
+            
+            const statusElement = document.getElementById('uploadStatus');
+            statusElement.textContent = `✅ Successfully loaded ${acmData.length} records from ${source}.`;
+            statusElement.classList.remove('text-gray-500', 'text-red-500', 'text-blue-500');
+            statusElement.classList.add('text-green-600');
+            
+            document.getElementById('fileInput').value = ''; 
+        };
+
+        const handleFileUpload = (event) => {
+            const file = event.target.files[0];
+            const statusElement = document.getElementById('uploadStatus');
+            statusElement.textContent = 'Processing file...';
+            statusElement.classList.remove('text-green-600', 'text-gray-500', 'text-red-500');
+            statusElement.classList.add('text-blue-500');
+
+
+            if (!file) {
+                statusElement.textContent = '';
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                let parsedData = [];
+                let standardizedHeaders = [];
+                const fileName = file.name;
+                
+                try {
+                    if (fileName.endsWith('.json')) {
+                        parsedData = JSON.parse(e.target.result);
+                        if (!Array.isArray(parsedData)) {
+                             throw new Error("JSON file must contain an array of objects.");
+                        }
+                        standardizedHeaders = Object.keys(parsedData[0] || {});
+
+                    } else if (fileName.endsWith('.csv')) {
+                        const { data, headers } = parseCSV(e.target.result);
+                        parsedData = data;
+                        standardizedHeaders = headers;
+                    } else {
+                        throw new Error("Unsupported file type.");
+                    }
+
+                    if (parsedData.length === 0) {
+                        throw new Error("File contains no valid data rows or all rows were skipped.");
+                    }
+                    
+                    const requiredKeys = ['name', 'ptpValue'];
+                    const hasRequiredKeys = requiredKeys.every(key => standardizedHeaders.includes(key));
+                    
+                    if (!hasRequiredKeys) {
+                         const missingKeys = requiredKeys.filter(key => !standardizedHeaders.includes(key));
+                         throw new Error(`Data structure mismatch. Missing required fields: ${missingKeys.map(k => k.toUpperCase()).join(', ')}. Please ensure your file includes 'ACM Name' and 'PTP Value' columns.`);
+                    }
+
+                    loadData(parsedData, fileName, standardizedHeaders);
+
+                } catch (error) {
+                    statusElement.textContent = `❌ Error loading data: ${error.message}`;
+                    statusElement.classList.remove('text-blue-500');
+                    statusElement.classList.add('text-red-500');
+                    console.error("Data loading error:", error);
+                    document.getElementById('fileInput').value = ''; 
+                }
+            };
+
+            reader.onerror = () => {
+                statusElement.textContent = '❌ Error reading file.';
+                statusElement.classList.remove('text-blue-500');
+                statusElement.classList.add('text-red-500');
+            };
+
+            reader.readAsText(file);
+        };
+
+        // --- Aggregation and Ranking Functions ---
+
+        const aggregateData = (data, groupKey = 'name') => {
+            const aggregation = {};
+
+            data.forEach(item => {
+                const key = item[groupKey];
+                if (!aggregation[key]) {
+                    aggregation[key] = {
+                        name: key,
+                        ptpVolume: 0,
+                        ptpValue: 0,
+                        calls: 0, 
+                        count: 0,
+                        rawItems: []
+                    };
+                    // Keep team/branch info ONLY for individual ACMS, not for aggregated groups
+                    if (groupKey === 'name') {
+                        aggregation[key].team = item.team;
+                        aggregation[key].branch = item.branch;
+                    }
+                }
+                
+                aggregation[key].ptpVolume += item.ptpVolume;
+                aggregation[key].ptpValue += item.ptpValue;
+                aggregation[key].calls += item.calls; 
+                aggregation[key].count += 1;
+                aggregation[key].rawItems.push(item);
+            });
+
+            return Object.values(aggregation);
+        };
+
+        const getTopAndLeast = (data, metric) => {
+            if (data.length === 0) return { top: [], least: [] };
+
+            const sortedData = [...data].sort((a, b) => b[metric] - a[metric]);
+            
+            const top = sortedData.slice(0, TOP_N);
+            
+            let bottomCandidates = sortedData.filter(item => item[metric] > 0);
+            
+            if (bottomCandidates.length > TOP_N * 2) {
+                // If there are enough positive performers, show the lowest positive N
+                bottomCandidates.sort((a, b) => a[metric] - b[metric]);
+                const least = bottomCandidates.slice(0, TOP_N);
+                return { top, least };
+            } else {
+                // Otherwise, show the lowest N overall (including zeros)
+                const least = sortedData.slice(-TOP_N).reverse();
+                return { top, least };
+            }
+        };
+
+        const calculateRankings = (filteredData) => {
+            const acmAgg = aggregateData(filteredData, 'name');
+            const teamAgg = aggregateData(filteredData, 'team');
+            const branchAgg = aggregateData(filteredData, 'branch');
+            const shiftAgg = aggregateData(filteredData, 'shift');
+            const statusAgg = aggregateData(filteredData, 'status');
+
+            return {
+                acmVolume: getTopAndLeast(acmAgg, 'ptpVolume'),
+                acmValue: getTopAndLeast(acmAgg, 'ptpValue'),
+                teamVolume: getTopAndLeast(teamAgg, 'ptpVolume'),
+                teamValue: getTopAndLeast(teamAgg, 'ptpValue'),
+                branchVolume: getTopAndLeast(branchAgg, 'ptpVolume'),
+                branchValue: getTopAndLeast(branchAgg, 'ptpValue'),
+                shiftAgg: shiftAgg,
+                statusAgg: statusAgg,
+            };
+        };
+
+
+        // --- D3 Chart Rendering Function (Updated for sequential delay and Tooltip) ---
+
+        const renderBarChart = (data, metric, chartId, isLeast = false, chartIndex = 0) => {
+            try {
+                d3.select(`#${chartId}`).selectAll("*").remove(); // Clear chart
+                
+                if (data.length === 0 || d3.max(data, d => d[metric]) <= 0) {
+                    d3.select(`#${chartId}`).append("p")
+                        .attr("class", "text-center text-sm text-gray-400 pt-16")
+                        .text("Not enough positive data to generate chart.");
+                    return;
+                }
+                
+                // Determine if this is an ACM ranking chart to show Team/Branch
+                const isAcmRanking = data.length > 0 && data[0].team !== undefined;
+
+                // Determine dimensions
+                const element = document.getElementById(chartId);
+                const parentWidth = element.clientWidth;
+                
+                const margin = {top: 20, right: 30, bottom: 80, left: 60},
+                      width = parentWidth - margin.left - margin.right,
+                      height = 350 - margin.top - margin.bottom;
+
+                const isValueMetric = metric === 'ptpValue';
+                const metricLabel = isValueMetric ? 'PTP Value' : 'PTP Volume';
+                
+                // Color change for Least N charts
+                const barClass = isValueMetric ? 
+                    (isLeast ? 'fill-red-500' : 'bar-val') : 
+                    (isLeast ? 'fill-pink-500' : 'bar-vol');
+
+                // Calculate base delay for the entire chart based on its sequence index
+                // Increased delay to 400ms for better sequential visibility
+                const chartBaseDelay = chartIndex * 400; 
+                
+                const tooltip = d3.select("#tooltip");
+
+                // Create SVG container
+                const svg = d3.select(`#${chartId}`)
+                    .append("svg")
+                    .attr("viewBox", `0 0 ${parentWidth} ${350}`)
+                    .append("g")
+                    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+                // X scale (for the names)
+                const x = d3.scaleBand()
+                    .range([0, width])
+                    .domain(data.map(d => d.name))
+                    .padding(0.2);
+
+                // Y scale (for the metric values)
+                const y = d3.scaleLinear()
+                    .domain([0, d3.max(data, d => d[metric]) * 1.1])
+                    .range([height, 0]);
+
+                // Draw X axis
+                svg.append("g")
+                    .attr("transform", `translate(0,${height})`)
+                    .attr("class", "axis")
+                    .call(d3.axisBottom(x))
+                    .selectAll("text")
+                    .attr("transform", "translate(-10,0)rotate(-45)")
+                    .style("text-anchor", "end");
+
+                // Draw Y axis
+                svg.append("g")
+                    .attr("class", "axis")
+                    .call(d3.axisLeft(y).tickFormat(d => isValueMetric ? formatValue(d) : formatVolume(d)));
+
+                // Draw bars
+                svg.selectAll(".bar")
+                    .data(data)
+                    .enter().append("rect")
+                    .attr("class", `bar ${barClass} cursor-pointer`) // Add cursor-pointer for hover cue
+                    .attr("x", d => x(d.name))
+                    .attr("width", x.bandwidth())
+                    .attr("y", height) // Start from bottom for animation effect
+                    .attr("height", 0) // Start from zero height
+                    .on("mouseover", function(event, d) {
+                        // Highlight bar
+                        d3.select(this).style("fill", "#f87171"); // Red-400 (or similar highlight)
+                        
+                        let tooltipHtml = `
+                            <p class="font-bold text-lg text-white mb-1">${d.name}</p>
+                            <p class="flex justify-between"><span class="metric-label">PTP Volume:</span> <span>${formatVolume(d.ptpVolume)}</span></p>
+                            <p class="flex justify-between"><span class="metric-label">PTP Value:</span> <span>${formatValue(d.ptpValue)}</span></p>
+                        `;
+
+                        if (isAcmRanking) {
+                             tooltipHtml += `
+                                <hr class="my-1 border-gray-700">
+                                <p class="flex justify-between"><span class="metric-label">Team:</span> <span>${d.team}</span></p>
+                                <p class="flex justify-between"><span class="metric-label">Branch:</span> <span>${d.branch}</span></p>
+                            `;
+                        } else {
+                            tooltipHtml += `
+                                <p class="text-xs text-gray-400 mt-1">(Aggregated data)</p>
+                            `;
+                        }
+                        
+                        tooltip.html(tooltipHtml)
+                               .style("opacity", 1);
+                    })
+                    .on("mousemove", function(event) {
+                        tooltip.style("left", (event.pageX + 10) + "px")
+                               .style("top", (event.pageY - 20) + "px");
+                    })
+                    .on("mouseout", function() {
+                        // Revert bar color
+                        d3.select(this).style("fill", null);
+                        tooltip.style("opacity", 0);
+                    })
+                    .transition()
+                    .duration(500) 
+                    // Add chartBaseDelay for sequential rendering + bar-specific delay
+                    .delay((d, i) => chartBaseDelay + (i * 80)) 
+                    .attr("y", d => y(d[metric]))
+                    .attr("height", d => height - y(d[metric]))
+                    .attr("rx", 4) // Rounded top corners
+                    .attr("ry", 4); 
+
+                // Add Y axis label
+                svg.append("text")
+                    .attr("transform", "rotate(-90)")
+                    .attr("y", 0 - margin.left)
+                    .attr("x", 0 - (height / 2))
+                    .attr("dy", "1em")
+                    .style("text-anchor", "middle")
+                    .style("fill", "#4b5563")
+                    .style("font-size", "12px")
+                    .text(metricLabel);
+            } catch (error) {
+                console.error(`Error rendering D3 chart for ID: ${chartId}, Metric: ${metric}`, error);
+                // Clear and display error message in the chart container
+                d3.select(`#${chartId}`).selectAll("*").remove();
+                d3.select(`#${chartId}`).append("p")
+                    .attr("class", "text-center text-sm text-red-500 pt-16")
+                    .text("Chart rendering failed. Check console for details.");
+            }
+        };
+
+        // --- Rendering Functions for Summary Tables (Unchanged) ---
+
+        const createRankingTableHtml = (data, rankingMetric, isTop, groupName = 'Name', chartId) => {
+            const TOP_N_DISPLAY = TOP_N; 
+            const rankingLabel = rankingMetric === 'ptpVolume' ? 'PTP Volume' : 'PTP Value';
+            const rankTitle = isTop ? `Top ${TOP_N_DISPLAY}` : `Least ${TOP_N_DISPLAY}`;
+            const rankClass = isTop ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
+            
+            const isAcmRanking = groupName === 'ACM Name';
+
+            if (data.length === 0) {
+                 return `
+                    <div class="border border-gray-200 rounded-lg shadow-md overflow-hidden">
+                        <h4 class="text-sm font-bold p-3 ${rankClass}">${rankTitle} by <span class="uppercase">${rankingLabel}</span></h4>
+                        <div id="${chartId}" class="chart-container">
+                             <p class="text-sm text-gray-500 italic text-center p-2 pt-16">No ${isTop ? 'Top' : 'Least'} performers found for this metric.</p>
+                        </div>
+                    </div>
+                `;
+            }
+
+
+            const extraHeaders = isAcmRanking ? `
+                <th class="px-3 py-2 text-xs font-medium text-gray-500 uppercase">Team</th>
+                <th class="px-3 py-2 text-xs font-medium text-gray-500 uppercase">Branch</th>
+            ` : '';
+
+            let tableRows = data.map((item, index) => {
+                const volClass = rankingMetric === 'ptpVolume' ? 'rank-vol' : 'text-gray-900';
+                const valClass = rankingMetric === 'ptpValue' ? 'rank-val' : 'text-gray-900';
+                
+                const extraCells = isAcmRanking ? `
+                    <td class="px-3 py-2 text-sm text-gray-500">${item.team || 'N/A'}</td>
+                    <td class="px-3 py-2 text-sm text-gray-500">${item.branch || 'N/A'}</td>
+                ` : '';
+
+                return `
+                    <tr class="hover:bg-gray-50 border-t">
+                        <td class="px-3 py-2 text-sm text-gray-800 font-semibold">${index + 1}</td>
+                        <td class="px-3 py-2 text-sm text-gray-700 truncate">${item.name}</td>
+                        <td class="px-3 py-2 text-sm text-gray-500">${formatVolume(item.calls)}</td>
+                        <td class="px-3 py-2 text-sm ${volClass}">${formatVolume(item.ptpVolume)}</td>
+                        <td class="px-3 py-2 text-sm ${valClass}">${formatValue(item.ptpValue)}</td>
+                        ${extraCells}
+                    </tr>
+                `;
+            }).join('');
+            
+            const minWidth = isAcmRanking ? '550px' : '400px';
+
+            return `
+                <div class="border border-gray-200 rounded-lg shadow-md overflow-hidden">
+                    <h4 class="text-sm font-bold p-3 ${rankClass}">${rankTitle} by <span class="uppercase">${rankingLabel}</span></h4>
+                    <!-- Chart container for this specific table -->
+                    <div id="${chartId}" class="chart-container"></div> 
+                    <div class="overflow-x-auto">
+                        <table class="w-full ranking-table min-w-[${minWidth}]">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-3 py-2 text-xs font-medium text-gray-500 uppercase">Rank</th>
+                                    <th class="px-3 py-2 text-xs font-medium text-gray-500 uppercase">${groupName}</th>
+                                    <th class="px-3 py-2 text-xs font-medium text-gray-500 uppercase">Calls</th>
+                                    <th class="px-3 py-2 text-xs font-medium text-gray-500 uppercase">PTP Vol</th>
+                                    <th class="px-3 py-2 text-xs font-medium text-gray-500 uppercase">PTP Val</th>
+                                    ${extraHeaders}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${tableRows}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderOverallRankings = (rankings) => {
+            const containerId = 'acmRankingsContent'; // Base ID, reused for team/branch below
+            const renderGroup = (targetContainerId, volumeRank, valueRank, groupName) => {
+                const container = document.getElementById(targetContainerId);
+                if (!container) return; // Safety check
+                
+                // Chart IDs for Top/Least Volume and Value
+                const chartIdVolTop = `${targetContainerId}-chart-vol-top`;
+                const chartIdVolLeast = `${targetContainerId}-chart-vol-least`;
+                const chartIdValTop = `${targetContainerId}-chart-val-top`;
+                const chartIdValLeast = `${targetContainerId}-chart-val-least`;
+
+                container.innerHTML = `
+                    <!-- Volume Charts and Tables -->
+                    <div class="space-y-4">
+                        <h4 class="text-sm font-semibold text-indigo-700 mb-2">PTP Volume Rankings</h4>
+                        ${createRankingTableHtml(volumeRank.top, 'ptpVolume', true, groupName, chartIdVolTop)}
+                        ${createRankingTableHtml(volumeRank.least, 'ptpVolume', false, groupName, chartIdVolLeast)}
+                    </div>
+                    <!-- Value Charts and Tables -->
+                    <div class="space-y-4">
+                        <h4 class="text-sm font-semibold text-green-700 mb-2">PTP Value Rankings</h4>
+                        ${createRankingTableHtml(valueRank.top, 'ptpValue', true, groupName, chartIdValTop)}
+                        ${createRankingTableHtml(valueRank.least, 'ptpValue', false, groupName, chartIdValLeast)}
+                    </div>
+                `;
+                
+                // Render the charts sequentially
+                renderBarChart(volumeRank.top, 'ptpVolume', chartIdVolTop, false, globalChartIndex++);
+                renderBarChart(volumeRank.least, 'ptpVolume', chartIdVolLeast, true, globalChartIndex++);
+                renderBarChart(valueRank.top, 'ptpValue', chartIdValTop, false, globalChartIndex++);
+                renderBarChart(valueRank.least, 'ptpValue', chartIdValLeast, true, globalChartIndex++);
+            };
+            
+            // Render individual ACMs
+            renderGroup('acmRankingsContent', rankings.acmVolume, rankings.acmValue, 'ACM Name');
+            // Render Teams
+            renderGroup('teamRankingsContent', rankings.teamVolume, rankings.teamValue, 'Team');
+            // Render Branches
+            renderGroup('branchRankingsContent', rankings.branchVolume, rankings.branchValue, 'Branch');
+        };
+
+        const renderSegmentedRankings = (title, aggData, containerId) => {
+            const container = document.getElementById(containerId);
+            if (!container) return; // Safety check
+            
+            let htmlContent = '';
+
+            if (aggData.length === 0) {
+                 container.innerHTML = `<h4 class="text-lg font-bold text-gray-800 mb-3">${title} Breakdown</h4><p class="text-sm text-gray-500 italic p-2">No data available for this breakdown.</p>`;
+                 return;
+            }
+            
+            htmlContent += `<h4 class="text-lg font-bold text-gray-800 mb-3">${title} Breakdown</h4>`;
+            container.innerHTML = htmlContent; // Render title first
+
+            aggData.forEach(group => {
+                // Ensure ID is safe for DOM (no spaces, special chars)
+                const groupKey = group.name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+                
+                const chartIdVolTop = `${containerId}-${groupKey}-chart-vol-top`;
+                const chartIdVolLeast = `${containerId}-${groupKey}-chart-vol-least`;
+                const chartIdValTop = `${containerId}-${groupKey}-chart-val-top`;
+                const chartIdValLeast = `${containerId}-${groupKey}-chart-val-least`;
+                
+                const acmsInGroup = aggregateData(group.rawItems, 'name');
+                const volumeRanks = getTopAndLeast(acmsInGroup, 'ptpVolume');
+                const valueRanks = getTopAndLeast(acmsInGroup, 'ptpValue');
+
+                const groupHtml = `
+                    <div class="group-container-${groupKey} p-4 mb-6 border border-gray-200 rounded-xl bg-white shadow-sm">
+                        <h5 class="text-md font-extrabold text-blue-800 mb-3 border-b pb-2">${group.name}</h5>
+                        
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <!-- Volume Section -->
+                            <div class="space-y-4">
+                                <h4 class="text-sm font-semibold text-indigo-700 mb-2">PTP Volume Rankings in ${group.name}</h4>
+                                ${createRankingTableHtml(volumeRanks.top, 'ptpVolume', true, 'ACM Name', chartIdVolTop)}
+                                ${createRankingTableHtml(volumeRanks.least, 'ptpVolume', false, 'ACM Name', chartIdVolLeast)}
+                            </div>
+                            <!-- Value Section -->
+                            <div class="space-y-4">
+                                <h4 class="text-sm font-semibold text-green-700 mb-2">PTP Value Rankings in ${group.name}</h4>
+                                ${createRankingTableHtml(valueRanks.top, 'ptpValue', true, 'ACM Name', chartIdValTop)}
+                                ${createRankingTableHtml(valueRanks.least, 'ptpValue', false, 'ACM Name', chartIdValLeast)}
+                   </div>
+                      </div>
+                    </div>
+                `;
+                
+                // Append the group HTML and then immediately render its charts sequentially
+                container.insertAdjacentHTML('beforeend', groupHtml);
+
+                // Render Volume Charts
+                renderBarChart(volumeRanks.top, 'ptpVolume', chartIdVolTop, false, globalChartIndex++);
+                renderBarChart(volumeRanks.least, 'ptpVolume', chartIdVolLeast, true, globalChartIndex++);
+                
+                // Render Value Charts
+                renderBarChart(valueRanks.top, 'ptpValue', chartIdValTop, false, globalChartIndex++);
+                renderBarChart(valueRanks.least, 'ptpValue', chartIdValLeast, true, globalChartIndex++);
+            });
+        };
+
+        const renderSummary = (rankings) => {
+            globalChartIndex = 0; // Reset counter every time filters are applied
+            
+            renderOverallRankings(rankings);
+            renderSegmentedRankings('Shift', rankings.shiftAgg, 'shiftRankingsContent');
+            renderSegmentedRankings('Status', rankings.statusAgg, 'statusRankingsContent');
+        };
+
+        // --- Core Dashboard Functions (Table Rendering and Filters) ---
+
+        const renderTable = (data) => {
+            const tbody = document.getElementById('dashboardTableBody');
+            const noResults = document.getElementById('noResults');
+            tbody.innerHTML = '';
+
+            if (data.length === 0) {
+                noResults.classList.remove('hidden');
+                return;
+            }
+
+            noResults.classList.add('hidden');
+
+            data.forEach(acm => {
+                const row = document.createElement('tr');
+                row.classList.add('hover:bg-gray-50');
+
+                const ptpValue = acm.ptpValue;
+                const calls = acm.calls;
+                const ptpVolume = acm.ptpVolume;
+
+                const statusClasses = getStatusColor(acm.status);
+                const shiftClasses = getShiftColor(acm.shift);
+
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${acm.name || 'N/A'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatVolume(calls)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatVolume(ptpVolume)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">${formatValue(ptpValue)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${shiftClasses}">${acm.shift || 'N/A'}</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClasses}">${acm.status || 'N/A'}</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${acm.team || 'N/A'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${acm.branch || 'N/A'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        };
+
+        const applyFilters = () => {
+            if (acmData.length === 0) {
+                renderTable([]);
+                renderSummary(calculateRankings([]));
+                return;
+            }
+            
+            // Null checks added for safety
+            const shift = document.getElementById('shiftFilter')?.value || 'All';
+            const status = document.getElementById('statusFilter')?.value || 'All';
+            const team = document.getElementById('teamFilter')?.value || 'All';
+            const branch = document.getElementById('branchFilter')?.value || 'All';
+            
+            const search = (document.getElementById('acmSearch')?.value || '').toLowerCase();
+
+            const ptpVolumeMin = parseFloat(document.getElementById('ptpVolumeMin')?.value) || 0;
+            const ptpVolumeMax = parseFloat(document.getElementById('ptpVolumeMax')?.value) || Infinity;
+            const ptpValueMin = parseFloat(document.getElementById('ptpValueMin')?.value) || 0;
+            const ptpValueMax = parseFloat(document.getElementById('ptpValueMax')?.value) || Infinity;
+
+
+            const filteredData = acmData.filter(acm => {
+                const currentPtpVolume = acm.ptpVolume;
+                const currentPtpValue = acm.ptpValue;
+                
+                const matchesShift = shift === 'All' || acm.shift === shift;
+                const matchesStatus = status === 'All' || acm.status === status;
+                const matchesTeam = team === 'All' || acm.team === team;
+                const matchesBranch = branch === 'All' || acm.branch === branch;
+
+                const matchesSearch = (acm.name || '').toLowerCase().includes(search);
+                
+                const matchesPtpVolume = currentPtpVolume >= ptpVolumeMin && currentPtpVolume <= ptpVolumeMax;
+                const matchesPtpValue = currentPtpValue >= ptpValueMin && currentPtpValue <= ptpValueMax;
+
+
+                return matchesShift && matchesStatus && matchesSearch && 
+                       matchesTeam && matchesBranch && 
+                       matchesPtpVolume && matchesPtpValue;
+            });
+
+            renderTable(filteredData);
+            
+            const rankings = calculateRankings(filteredData);
+            renderSummary(rankings);
+        };
+
+        const setupFilters = (data) => {
+            const uniqueShifts = [...new Set(data.map(acm => acm.shift).filter(Boolean))];
+            const uniqueStatuses = [...new Set(data.map(acm => acm.status).filter(Boolean))];
+            const uniqueTeams = [...new Set(data.map(acm => acm.team).filter(Boolean))];
+            const uniqueBranches = [...new Set(data.map(acm => acm.branch).filter(Boolean))];
+
+            const populateFilter = (filterId, uniqueValues, allOptionText) => {
+                const filterElement = document.getElementById(filterId);
+                if (!filterElement) return;
+
+                filterElement.innerHTML = `<option value="All">${allOptionText}</option>`;
+                uniqueValues.sort().forEach(val => {
+                    const option = document.createElement('option');
+                    option.value = val;
+                    option.textContent = val;
+                    filterElement.appendChild(option);
+                });
+            };
+
+            populateFilter('shiftFilter', uniqueShifts, 'All Shifts');
+            populateFilter('statusFilter', uniqueStatuses, 'All Statuses');
+            populateFilter('teamFilter', uniqueTeams, 'All Teams');
+            populateFilter('branchFilter', uniqueBranches, 'All Branches');
+        };
+
+        const initDashboard = () => {
+            const controls = [
+                'shiftFilter', 'statusFilter', 'teamFilter', 'branchFilter',
+                'acmSearch', 'ptpVolumeMin', 'ptpVolumeMax', 'ptpValueMin', 'ptpValueMax', 'fileInput'
+            ];
+
+            controls.forEach(id => {
+                const element = document.getElementById(id);
+                // Bind all input/change events to applyFilters
+                if (element) {
+                    if (id === 'fileInput') {
+                         element.addEventListener('change', handleFileUpload);
+                    } else {
+                        element.addEventListener('input', applyFilters);
+                        element.addEventListener('change', applyFilters);
+                    }
+                }
+            });
+            
+            // Load initial mock data
+            loadData(mockData, 'Mock Data');
+
+            // Handle resize event to make charts responsive (using debounce for performance)
+            let resizeTimer;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimer);
+                // We call applyFilters to re-render the charts and adjust their size
+                resizeTimer = setTimeout(applyFilters, 150);
+            });
+        };
+
+        // Start the dashboard immediately after the script block is parsed
+        initDashboard();
+    </script>
+</body>
+</html>
